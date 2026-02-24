@@ -1,0 +1,11 @@
+---
+Language:        Cpp
+ColumnLimit:     100
+AccessModifierOffset: -4
+IndentWidth:     4
+TabWidth:        8
+UseTab:          Never
+Standard: "c++17"
+
+IndentCaseLabels: true
+IndentCaseBlocks: true

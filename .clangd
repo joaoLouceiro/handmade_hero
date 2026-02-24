@@ -1,0 +1,21 @@
+CompileFlags:
+  Add:
+    # - -I/usr/include/llvm-20/llvm/
+    # - -I/usr/include
+    # - -I/usr/local/include
+    - -I/usr/include/x86_64-linux-gnu
+    - -I/usr/include/SDL2
+    # - -lSDL2
+
+    # - -DLOCAL
+    # - -Wall
+    # - -O2
+    # - -Wextra
+    # - -Wshadow
+    # - -Wconversion
+    # - -Wfloat-equal
+    # - -Wno-unused-const-variable
+    # - -Wno-sign-conversion
+    - -std=c++17
+  Index:
+    # Background: Skip
