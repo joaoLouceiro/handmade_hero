@@ -1,11 +1,17 @@
 ---
 Language:        Cpp
-ColumnLimit:     100
+ColumnLimit:     80
 AccessModifierOffset: -4
 IndentWidth:     4
 TabWidth:        8
 UseTab:          Never
 Standard: "c++17"
 
+
+
 IndentCaseLabels: true
 IndentCaseBlocks: true
+BreakBeforeBraces: Linux
+BinPackParameters: AlwaysOnePerLine
+BinPackArguments: false
+AllowAllArgumentsOnNextLine: false
