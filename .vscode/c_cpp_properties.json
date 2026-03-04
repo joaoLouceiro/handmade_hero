@@ -10,10 +10,7 @@
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",
-            "intelliSenseMode": "linux-clang-x64",
-            "compilerArgs": [
-                "$(sdl2-config --cflags --libs)"
-            ]
+            "intelliSenseMode": "linux-clang-x64"
         }
     ],
     "version": 4
