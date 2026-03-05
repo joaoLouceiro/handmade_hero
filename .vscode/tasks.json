@@ -1,14 +1,14 @@
 {
     "tasks": [
         {
-            "type": "cppbuild",
+            "type": "shell",
             "label": "HH Custom Build",
             "command": "/usr/bin/bash",
             "args": [
                 "build.sh"
             ],
             "options": {
-                "cwd": "${workspaceFolder}/handmade/code"
+                "cwd": "${workspaceFolder}/handmade/code",
             },
             "group": {
                 "kind": "build",
