@@ -7,6 +7,7 @@
    ======================================================================== */
 
 #include <SDL.h>
+#include <cstring>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
@@ -52,6 +53,52 @@ global_variable sdl_offscreen_buffer GlobalBackbuffer;
 #define MAX_CONTROLLERS 4
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
 SDL_Haptic *RumbleHandle[MAX_CONTROLLERS];
+
+internal void SDLAudioCallback(void *UserData,
+                               uint8 *AudioData,
+                               int Length)
+{
+    memset(AudioData, 0, Length);
+}
+
+internal void AudioWithQueue(SDL_AudioSpec AudioSettings,
+                             void *UserData,
+                             uint32 Length)
+{
+
+    SDL_AudioDeviceID AudioDeviceID = SDL_OpenAudioDevice(0, 0, &AudioSettings, 0, 0);
+    SDL_QueueAudio(AudioDeviceID, UserData, 0);
+    SDL_PauseAudioDevice(AudioDeviceID, 0);
+}
+
+internal void SDLInitAudio(int32 SamplesPerSecond,
+                           int32 BufferSize)
+{
+    SDL_AudioSpec AudioSettings = {0};
+
+    AudioSettings.freq = SamplesPerSecond;
+    AudioSettings.format = AUDIO_S16LSB;
+    AudioSettings.channels = 2;
+    AudioSettings.size = BufferSize;
+    AudioSettings.callback = &SDLAudioCallback;
+
+    SDL_OpenAudio(&AudioSettings, 0);
+
+    printf("Initialised an Audio device at frequency %d Hz, %d Channels\n",
+           AudioSettings.freq,
+           AudioSettings.channels);
+
+    if (AudioSettings.format != AUDIO_S16LSB) {
+        printf("Oops! We didn't get AUDIO_S16LSB as our sample format!\n");
+        SDL_CloseAudio();
+    }
+
+    SDL_PauseAudio(0);
+
+    // void *UserData;
+    // uint32 Length = 0;
+    // AudioWithQueue(AudioSettings, UserData, Length);
+}
 
 sdl_window_dimension SDLGetWindowDimension(SDL_Window *Window)
 {
@@ -239,13 +286,14 @@ internal void SDLCloseGameControllers()
         }
     }
 }
-
 int main(int argc,
          char *argv[])
 {
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC | SDL_INIT_AUDIO);
     // Initialise our Game Controllers:
     SDLOpenGameControllers();
+    SDLInitAudio(48000, 4096);
+
     // Create our window.
     SDL_Window *Window = SDL_CreateWindow("Handmade Hero",
                                           SDL_WINDOWPOS_UNDEFINED,
@@ -312,9 +360,6 @@ int main(int argc,
                         int16 StickY = SDL_GameControllerGetAxis(ControllerHandles[ControllerIndex],
                                                                  SDL_CONTROLLER_AXIS_LEFTY);
 
-                        if (AButton) {
-                            YOffset += 2;
-                        }
                         if (BButton) {
                             if (RumbleHandle[ControllerIndex]) {
                                 SDL_HapticRumblePlay(RumbleHandle[ControllerIndex], 0.5f, 2000);
@@ -338,6 +383,7 @@ int main(int argc,
         // TODO(casey): Logging
     }
 
+    SDL_CloseAudio();
     SDLCloseGameControllers();
     SDL_Quit();
     return (0);
