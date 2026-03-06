@@ -58,8 +58,19 @@ internal void RenderWeirdGradient(sdl_offscreen_buffer Buffer,
     for (int Y = 0; Y < Buffer.Height; ++Y) {
         uint32 *Pixel = (uint32 *)Row;
         for (int X = 0; X < Buffer.Width; ++X) {
-            uint8 Blue = (X + BlueOffset);
-            uint8 Green = (Y + GreenOffset);
+            uint8 Blue;
+            if ((X / 256) % 2 == 0) {
+                Blue = (X + BlueOffset);
+            } else {
+                Blue = ((256 - (X - 255)) + BlueOffset);
+            }
+            uint8 Green;
+
+            if ((Y / 256) % 2 == 0) {
+                Green = (Y + GreenOffset);
+            } else {
+                Green = ((256 - (Y - 255)) + GreenOffset);
+            }
 
             *Pixel++ = ((Green << 8) | Blue);
         }
