@@ -6,9 +6,7 @@
    $Notice: (C) Copyright 2014 by Molly Rocket, Inc. All Rights Reserved. $
    ======================================================================== */
 
-#include "SDL_audio.h"
 #include <SDL.h>
-#include <cstring>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
@@ -53,7 +51,34 @@ global_variable sdl_offscreen_buffer GlobalBackbuffer;
 
 #define MAX_CONTROLLERS 4
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
-SDL_Haptic *RumbleHandle[MAX_CONTROLLERS];
+SDL_Haptic *RumbleHandles[MAX_CONTROLLERS];
+
+struct sdl_audio_ring_buffer {
+    int Size;
+    int WriteCursor;
+    int PlayCursor;
+    void *Data;
+};
+
+sdl_audio_ring_buffer AudioRingBuffer;
+
+internal void SDLAudioCallback(void *UserData,
+                               Uint8 *AudioData,
+                               int Length)
+{
+    sdl_audio_ring_buffer *RingBuffer = (sdl_audio_ring_buffer *)UserData;
+
+    int Region1Size = Length;
+    int Region2Size = 0;
+    if (RingBuffer->PlayCursor + Length > RingBuffer->Size) {
+        Region1Size = RingBuffer->Size - RingBuffer->PlayCursor;
+        Region2Size = Length - Region1Size;
+    }
+    memcpy(AudioData, (uint8 *)(RingBuffer->Data) + RingBuffer->PlayCursor, Region1Size);
+    memcpy(&AudioData[Region1Size], RingBuffer->Data, Region2Size);
+    RingBuffer->PlayCursor = (RingBuffer->PlayCursor + Length) % RingBuffer->Size;
+    RingBuffer->WriteCursor = (RingBuffer->PlayCursor + 2048) % RingBuffer->Size;
+}
 
 internal void SDLInitAudio(int32 SamplesPerSecond,
                            int32 BufferSize)
@@ -63,10 +88,20 @@ internal void SDLInitAudio(int32 SamplesPerSecond,
     AudioSettings.freq = SamplesPerSecond;
     AudioSettings.format = AUDIO_S16LSB;
     AudioSettings.channels = 2;
-    AudioSettings.samples = BufferSize / 2;
-    // AudioSettings.callback = &SDLAudioCallback;
+    AudioSettings.samples = 2056;
+    AudioSettings.callback = &SDLAudioCallback;
+    AudioSettings.userdata = &AudioRingBuffer;
+
+    AudioRingBuffer.Size = BufferSize;
+    AudioRingBuffer.Data = malloc(BufferSize);
+    AudioRingBuffer.PlayCursor = AudioRingBuffer.WriteCursor = 0;
 
     SDL_OpenAudio(&AudioSettings, 0);
+
+    printf("Initialised an Audio device at frequency %d Hz, %d Channels, buffer size %d\n",
+           AudioSettings.freq,
+           AudioSettings.channels,
+           AudioSettings.samples);
 
     if (AudioSettings.format != AUDIO_S16LSB) {
         printf("Oops! We didn't get AUDIO_S16LSB as our sample format!\n");
@@ -190,6 +225,11 @@ bool HandleEvent(SDL_Event *Event)
                     } else if (KeyCode == SDLK_SPACE) {
                     }
                 }
+
+                bool AltKeyWasDown = (Event->key.keysym.mod & KMOD_ALT);
+                if (KeyCode == SDLK_F4 && AltKeyWasDown) {
+                    ShouldQuit = true;
+                }
             }
             break;
 
@@ -239,11 +279,12 @@ internal void SDLOpenGameControllers()
             break;
         }
         ControllerHandles[ControllerIndex] = SDL_GameControllerOpen(JoystickIndex);
-        RumbleHandle[ControllerIndex] = SDL_HapticOpen(JoystickIndex);
-        if (RumbleHandle[ControllerIndex] &&
-            SDL_HapticRumbleInit(RumbleHandle[ControllerIndex]) != 0) {
-            SDL_HapticClose(RumbleHandle[ControllerIndex]);
-            RumbleHandle[ControllerIndex] = 0;
+        SDL_Joystick *JoystickHandle =
+            SDL_GameControllerGetJoystick(ControllerHandles[ControllerIndex]);
+        RumbleHandles[ControllerIndex] = SDL_HapticOpenFromJoystick(JoystickHandle);
+        if (SDL_HapticRumbleInit(RumbleHandles[ControllerIndex]) != 0) {
+            SDL_HapticClose(RumbleHandles[ControllerIndex]);
+            RumbleHandles[ControllerIndex] = 0;
         }
 
         ControllerIndex++;
@@ -254,12 +295,13 @@ internal void SDLCloseGameControllers()
 {
     for (int ControllerIndex = 0; ControllerIndex < MAX_CONTROLLERS; ++ControllerIndex) {
         if (ControllerHandles[ControllerIndex]) {
-            if (RumbleHandle[ControllerIndex])
-                SDL_HapticClose(RumbleHandle[ControllerIndex]);
+            if (RumbleHandles[ControllerIndex])
+                SDL_HapticClose(RumbleHandles[ControllerIndex]);
             SDL_GameControllerClose(ControllerHandles[ControllerIndex]);
         }
     }
 }
+
 int main(int argc,
          char *argv[])
 {
@@ -275,7 +317,7 @@ int main(int argc,
                                           SDL_WINDOW_RESIZABLE);
     if (Window) {
         // Create a "Renderer" for our window.
-        SDL_Renderer *Renderer = SDL_CreateRenderer(Window, -1, 0);
+        SDL_Renderer *Renderer = SDL_CreateRenderer(Window, -1, SDL_RENDERER_PRESENTVSYNC);
         if (Renderer) {
             bool Running = true;
             sdl_window_dimension Dimension = SDLGetWindowDimension(Window);
@@ -285,14 +327,15 @@ int main(int argc,
 
             // NOTE: Sound test
             int SamplesPerSecond = 48000;
-            int ToneHz = 256;
+            int ToneHz = 260;
             int16 ToneVolume = 3000;
             uint32 RunningSampleIndex = 0;
             int SquareWavePeriod = SamplesPerSecond / ToneHz;
             int HalfSquareWavePeriod = SquareWavePeriod / 2;
             int BytesPerSample = sizeof(int16) * 2;
+            int SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
             // Open our audio device:
-            SDLInitAudio(48000, SamplesPerSecond * BytesPerSample / 60);
+            SDLInitAudio(48000, SecondaryBufferSize);
             bool SoundIsPlaying = false;
 
             while (Running) {
@@ -345,27 +388,48 @@ int main(int argc,
                         int16 StickY = SDL_GameControllerGetAxis(ControllerHandles[ControllerIndex],
                                                                  SDL_CONTROLLER_AXIS_LEFTY);
 
+                        if (AButton) {
+                            YOffset += 2;
+                        }
                         if (BButton) {
-                            if (RumbleHandle[ControllerIndex]) {
-                                SDL_HapticRumblePlay(RumbleHandle[ControllerIndex], 0.5f, 2000);
+                            if (RumbleHandles[ControllerIndex]) {
+                                SDL_HapticRumblePlay(RumbleHandles[ControllerIndex], 0.5f, 2000);
                             }
                         }
-
-                        ToneHz = (StickX >> 16);
-
                     } else {
                         // TODO: This controller is not plugged in.
                     }
                 }
 
-                // 800 = SamplesPerSecond / FramesPerSecond (60)
-                int BytesToWrite = 800 * BytesPerSample;
+                RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
 
-                void *SoundBuffer = malloc(BytesToWrite);
-                int16 *SampleOut = (int16 *)SoundBuffer;
-                int SampleCount = BytesToWrite / BytesPerSample;
+                // Sound output test
+                SDL_LockAudio();
+                int ByteToLock = RunningSampleIndex * BytesPerSample % SecondaryBufferSize;
+                int BytesToWrite;
+                if (ByteToLock == AudioRingBuffer.PlayCursor) {
+                    BytesToWrite = SecondaryBufferSize;
+                } else if (ByteToLock > AudioRingBuffer.PlayCursor) {
+                    BytesToWrite = (SecondaryBufferSize - ByteToLock);
+                    BytesToWrite += AudioRingBuffer.PlayCursor;
+                } else {
+                    BytesToWrite = AudioRingBuffer.PlayCursor - ByteToLock;
+                }
 
-                for (int SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex) {
+                // TODO(casey): More strenuous test!
+                // TODO(casey): Switch to a sine wave
+                void *Region1 = (uint8 *)AudioRingBuffer.Data + ByteToLock;
+                int Region1Size = BytesToWrite;
+                if (Region1Size + ByteToLock > SecondaryBufferSize)
+                    Region1Size = SecondaryBufferSize - ByteToLock;
+                void *Region2 = AudioRingBuffer.Data;
+                int Region2Size = BytesToWrite - Region1Size;
+                SDL_UnlockAudio();
+
+                int Region1SampleCount = Region1Size / BytesPerSample;
+                int16 *SampleOut = (int16 *)Region1;
+                int SampleIndex1;
+                for (SampleIndex1 = 0; SampleIndex1 < Region1SampleCount; ++SampleIndex1) {
                     int16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2)
                                             ? ToneVolume
                                             : -ToneVolume;
@@ -373,15 +437,22 @@ int main(int argc,
                     *SampleOut++ = SampleValue;
                 }
 
-                SDL_QueueAudio(1, SoundBuffer, BytesToWrite);
-                free(SoundBuffer);
+                int Region2SampleCount = Region2Size / BytesPerSample;
+                SampleOut = (int16 *)Region2;
+                int SampleIndex2;
+                for (SampleIndex2 = 0; SampleIndex2 < Region2SampleCount; ++SampleIndex2) {
+                    int16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2)
+                                            ? ToneVolume
+                                            : -ToneVolume;
+                    *SampleOut++ = SampleValue;
+                    *SampleOut++ = SampleValue;
+                }
 
                 if (!SoundIsPlaying) {
                     SDL_PauseAudio(0);
                     SoundIsPlaying = true;
                 }
 
-                RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
                 SDLUpdateWindow(Window, Renderer, &GlobalBackbuffer);
 
                 ++XOffset;
@@ -393,7 +464,6 @@ int main(int argc,
         // TODO(casey): Logging
     }
 
-    SDL_CloseAudio();
     SDLCloseGameControllers();
     SDL_Quit();
     return (0);
