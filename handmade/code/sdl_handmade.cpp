@@ -41,7 +41,8 @@ typedef uint64_t uint64;
 typedef float real32;
 typedef double real64;
 
-struct sdl_offscreen_buffer {
+struct sdl_offscreen_buffer
+{
     // NOTE(casey): Pixels are alwasy 32-bits wide, Memory Order BB GG RR XX
     SDL_Texture *Texture;
     void *Memory;
@@ -50,7 +51,8 @@ struct sdl_offscreen_buffer {
     int Pitch;
 };
 
-struct sdl_window_dimension {
+struct sdl_window_dimension
+{
     int Width;
     int Height;
 };
@@ -61,7 +63,8 @@ global_variable sdl_offscreen_buffer GlobalBackbuffer;
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
 SDL_Haptic *RumbleHandles[MAX_CONTROLLERS];
 
-struct sdl_audio_ring_buffer {
+struct sdl_audio_ring_buffer
+{
     int Size;
     int WriteCursor;
     int PlayCursor;
@@ -78,7 +81,8 @@ internal void SDLAudioCallback(void *UserData,
 
     int Region1Size = Length;
     int Region2Size = 0;
-    if (RingBuffer->PlayCursor + Length > RingBuffer->Size) {
+    if (RingBuffer->PlayCursor + Length > RingBuffer->Size)
+    {
         Region1Size = RingBuffer->Size - RingBuffer->PlayCursor;
         Region2Size = Length - Region1Size;
     }
@@ -111,7 +115,8 @@ internal void SDLInitAudio(int32 SamplesPerSecond,
            AudioSettings.channels,
            AudioSettings.size);
 
-    if (AudioSettings.format != AUDIO_S16LSB) {
+    if (AudioSettings.format != AUDIO_S16LSB)
+    {
         printf("Oops! We didn't get AUDIO_S16LSB as our sample format!\n");
         SDL_CloseAudio();
     }
@@ -131,9 +136,11 @@ internal void RenderWeirdGradient(sdl_offscreen_buffer *Buffer,
                                   int GreenOffset)
 {
     uint8 *Row = (uint8 *)Buffer->Memory;
-    for (int Y = 0; Y < Buffer->Height; ++Y) {
+    for (int Y = 0; Y < Buffer->Height; ++Y)
+    {
         uint32 *Pixel = (uint32 *)Row;
-        for (int X = 0; X < Buffer->Width; ++X) {
+        for (int X = 0; X < Buffer->Width; ++X)
+        {
             uint8 Blue = (X + BlueOffset);
             uint8 Green = (Y + GreenOffset);
 
@@ -150,10 +157,12 @@ internal void SDLResizeTexture(sdl_offscreen_buffer *Buffer,
                                int Height)
 {
     int BytesPerPixel = 4;
-    if (Buffer->Memory) {
+    if (Buffer->Memory)
+    {
         munmap(Buffer->Memory, Buffer->Width * Buffer->Height * BytesPerPixel);
     }
-    if (Buffer->Texture) {
+    if (Buffer->Texture)
+    {
         SDL_DestroyTexture(Buffer->Texture);
     }
     Buffer->Texture = SDL_CreateTexture(Renderer,
@@ -187,7 +196,8 @@ bool HandleEvent(SDL_Event *Event)
 {
     bool ShouldQuit = false;
 
-    switch (Event->type) {
+    switch (Event->type)
+    {
         case SDL_QUIT:
             {
                 printf("SDL_QUIT\n");
@@ -201,41 +211,71 @@ bool HandleEvent(SDL_Event *Event)
                 SDL_Keycode KeyCode = Event->key.keysym.sym;
                 bool IsDown = (Event->key.state == SDL_PRESSED);
                 bool WasDown = false;
-                if (Event->key.state == SDL_RELEASED) {
+                if (Event->key.state == SDL_RELEASED)
+                {
                     WasDown = true;
-                } else if (Event->key.repeat != 0) {
+                }
+                else if (Event->key.repeat != 0)
+                {
                     WasDown = true;
                 }
 
                 // NOTE: In the windows version, we used "if (IsDown != WasDown)"
                 // to detect key repeats. SDL has the 'repeat' value, though,
                 // which we'll use.
-                if (Event->key.repeat == 0) {
-                    if (KeyCode == SDLK_w) {
-                    } else if (KeyCode == SDLK_a) {
-                    } else if (KeyCode == SDLK_s) {
-                    } else if (KeyCode == SDLK_d) {
-                    } else if (KeyCode == SDLK_q) {
-                    } else if (KeyCode == SDLK_e) {
-                    } else if (KeyCode == SDLK_UP) {
-                    } else if (KeyCode == SDLK_LEFT) {
-                    } else if (KeyCode == SDLK_DOWN) {
-                    } else if (KeyCode == SDLK_RIGHT) {
-                    } else if (KeyCode == SDLK_ESCAPE) {
+                if (Event->key.repeat == 0)
+                {
+                    if (KeyCode == SDLK_w)
+                    {
+                    }
+                    else if (KeyCode == SDLK_a)
+                    {
+                    }
+                    else if (KeyCode == SDLK_s)
+                    {
+                    }
+                    else if (KeyCode == SDLK_d)
+                    {
+                    }
+                    else if (KeyCode == SDLK_q)
+                    {
+                    }
+                    else if (KeyCode == SDLK_e)
+                    {
+                    }
+                    else if (KeyCode == SDLK_UP)
+                    {
+                    }
+                    else if (KeyCode == SDLK_LEFT)
+                    {
+                    }
+                    else if (KeyCode == SDLK_DOWN)
+                    {
+                    }
+                    else if (KeyCode == SDLK_RIGHT)
+                    {
+                    }
+                    else if (KeyCode == SDLK_ESCAPE)
+                    {
                         printf("ESCAPE: ");
-                        if (IsDown) {
+                        if (IsDown)
+                        {
                             printf("IsDown ");
                         }
-                        if (WasDown) {
+                        if (WasDown)
+                        {
                             printf("WasDown");
                         }
                         printf("\n");
-                    } else if (KeyCode == SDLK_SPACE) {
+                    }
+                    else if (KeyCode == SDLK_SPACE)
+                    {
                     }
                 }
 
                 bool AltKeyWasDown = (Event->key.keysym.mod & KMOD_ALT);
-                if (KeyCode == SDLK_F4 && AltKeyWasDown) {
+                if (KeyCode == SDLK_F4 && AltKeyWasDown)
+                {
                     ShouldQuit = true;
                 }
             }
@@ -243,7 +283,8 @@ bool HandleEvent(SDL_Event *Event)
 
         case SDL_WINDOWEVENT:
             {
-                switch (Event->window.event) {
+                switch (Event->window.event)
+                {
                     case SDL_WINDOWEVENT_SIZE_CHANGED:
                         {
                             SDL_Window *Window = SDL_GetWindowFromID(Event->window.windowID);
@@ -275,7 +316,8 @@ bool HandleEvent(SDL_Event *Event)
     return (ShouldQuit);
 }
 
-struct sdl_sound_output {
+struct sdl_sound_output
+{
     int SamplesPerSecond;
     int ToneHz;
     int16 ToneVolume;
@@ -293,14 +335,16 @@ internal void SDLFillSoundBuffer(sdl_sound_output *SoundOutput,
 {
     void *Region1 = (uint8 *)AudioRingBuffer.Data + ByteToLock;
     int Region1Size = BytesToWrite;
-    if (Region1Size + ByteToLock > SoundOutput->SecondaryBufferSize) {
+    if (Region1Size + ByteToLock > SoundOutput->SecondaryBufferSize)
+    {
         Region1Size = SoundOutput->SecondaryBufferSize - ByteToLock;
     }
     void *Region2 = AudioRingBuffer.Data;
     int Region2Size = BytesToWrite - Region1Size;
     int Region1SampleCount = Region1Size / SoundOutput->BytesPerSample;
     int16 *SampleOut = (int16 *)Region1;
-    for (int SampleIndex = 0; SampleIndex < Region1SampleCount; ++SampleIndex) {
+    for (int SampleIndex = 0; SampleIndex < Region1SampleCount; ++SampleIndex)
+    {
         // TODO(casey): Draw this out for people
         real32 SineValue = sinf(SoundOutput->tSine);
         int16 SampleValue = (int16)(SineValue * SoundOutput->ToneVolume);
@@ -313,7 +357,8 @@ internal void SDLFillSoundBuffer(sdl_sound_output *SoundOutput,
 
     int Region2SampleCount = Region2Size / SoundOutput->BytesPerSample;
     SampleOut = (int16 *)Region2;
-    for (int SampleIndex = 0; SampleIndex < Region2SampleCount; ++SampleIndex) {
+    for (int SampleIndex = 0; SampleIndex < Region2SampleCount; ++SampleIndex)
+    {
         // TODO(casey): Draw this out for people
         real32 SineValue = sinf(SoundOutput->tSine);
         int16 SampleValue = (int16)(SineValue * SoundOutput->ToneVolume);
@@ -329,18 +374,22 @@ internal void SDLOpenGameControllers()
 {
     int MaxJoysticks = SDL_NumJoysticks();
     int ControllerIndex = 0;
-    for (int JoystickIndex = 0; JoystickIndex < MaxJoysticks; ++JoystickIndex) {
-        if (!SDL_IsGameController(JoystickIndex)) {
+    for (int JoystickIndex = 0; JoystickIndex < MaxJoysticks; ++JoystickIndex)
+    {
+        if (!SDL_IsGameController(JoystickIndex))
+        {
             continue;
         }
-        if (ControllerIndex >= MAX_CONTROLLERS) {
+        if (ControllerIndex >= MAX_CONTROLLERS)
+        {
             break;
         }
         ControllerHandles[ControllerIndex] = SDL_GameControllerOpen(JoystickIndex);
         SDL_Joystick *JoystickHandle =
             SDL_GameControllerGetJoystick(ControllerHandles[ControllerIndex]);
         RumbleHandles[ControllerIndex] = SDL_HapticOpenFromJoystick(JoystickHandle);
-        if (SDL_HapticRumbleInit(RumbleHandles[ControllerIndex]) != 0) {
+        if (SDL_HapticRumbleInit(RumbleHandles[ControllerIndex]) != 0)
+        {
             SDL_HapticClose(RumbleHandles[ControllerIndex]);
             RumbleHandles[ControllerIndex] = 0;
         }
@@ -351,8 +400,10 @@ internal void SDLOpenGameControllers()
 
 internal void SDLCloseGameControllers()
 {
-    for (int ControllerIndex = 0; ControllerIndex < MAX_CONTROLLERS; ++ControllerIndex) {
-        if (ControllerHandles[ControllerIndex]) {
+    for (int ControllerIndex = 0; ControllerIndex < MAX_CONTROLLERS; ++ControllerIndex)
+    {
+        if (ControllerHandles[ControllerIndex])
+        {
             if (RumbleHandles[ControllerIndex])
                 SDL_HapticClose(RumbleHandles[ControllerIndex]);
             SDL_GameControllerClose(ControllerHandles[ControllerIndex]);
@@ -373,10 +424,12 @@ int main(int argc,
                                           640,
                                           480,
                                           SDL_WINDOW_RESIZABLE);
-    if (Window) {
+    if (Window)
+    {
         // Create a "Renderer" for our window.
         SDL_Renderer *Renderer = SDL_CreateRenderer(Window, -1, SDL_RENDERER_PRESENTVSYNC);
-        if (Renderer) {
+        if (Renderer)
+        {
             bool Running = true;
             sdl_window_dimension Dimension = SDLGetWindowDimension(Window);
             SDLResizeTexture(&GlobalBackbuffer, Renderer, Dimension.Width, Dimension.Height);
@@ -401,19 +454,23 @@ int main(int argc,
                                SoundOutput.LatencySampleCount * SoundOutput.BytesPerSample);
             SDL_PauseAudio(0);
 
-            while (Running) {
+            while (Running)
+            {
                 SDL_Event Event;
-                while (SDL_PollEvent(&Event)) {
-                    if (HandleEvent(&Event)) {
+                while (SDL_PollEvent(&Event))
+                {
+                    if (HandleEvent(&Event))
+                    {
                         Running = false;
                     }
                 }
 
                 // Poll our controllers for input.
-                for (int ControllerIndex = 0; ControllerIndex < MAX_CONTROLLERS;
-                     ++ControllerIndex) {
+                for (int ControllerIndex = 0; ControllerIndex < MAX_CONTROLLERS; ++ControllerIndex)
+                {
                     if (ControllerHandles[ControllerIndex] != 0 &&
-                        SDL_GameControllerGetAttached(ControllerHandles[ControllerIndex])) {
+                        SDL_GameControllerGetAttached(ControllerHandles[ControllerIndex]))
+                    {
                         // NOTE: We have a controller with index ControllerIndex.
                         bool Up = SDL_GameControllerGetButton(ControllerHandles[ControllerIndex],
                                                               SDL_CONTROLLER_BUTTON_DPAD_UP);
@@ -451,11 +508,14 @@ int main(int argc,
                         int16 StickY = SDL_GameControllerGetAxis(ControllerHandles[ControllerIndex],
                                                                  SDL_CONTROLLER_AXIS_LEFTY);
 
-                        if (AButton) {
+                        if (AButton)
+                        {
                             YOffset += 2;
                         }
-                        if (BButton) {
-                            if (RumbleHandles[ControllerIndex]) {
+                        if (BButton)
+                        {
+                            if (RumbleHandles[ControllerIndex])
+                            {
                                 SDL_HapticRumblePlay(RumbleHandles[ControllerIndex], 0.5f, 2000);
                             }
                         }
@@ -465,7 +525,9 @@ int main(int argc,
 
                         SoundOutput.ToneHz = 512 + (int)(256.0f * ((real32)StickY / 40000.0f));
                         SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz;
-                    } else {
+                    }
+                    else
+                    {
                         // TODO: This controller is not plugged in.
                     }
                 }
@@ -480,10 +542,13 @@ int main(int argc,
                                                                    SoundOutput.BytesPerSample)) %
                                     SoundOutput.SecondaryBufferSize);
                 int BytesToWrite;
-                if (ByteToLock > TargetCursor) {
+                if (ByteToLock > TargetCursor)
+                {
                     BytesToWrite = (SoundOutput.SecondaryBufferSize - ByteToLock);
                     BytesToWrite += TargetCursor;
-                } else {
+                }
+                else
+                {
                     BytesToWrite = TargetCursor - ByteToLock;
                 }
 
@@ -494,10 +559,14 @@ int main(int argc,
 
                 ++XOffset;
             }
-        } else {
+        }
+        else
+        {
             // TODO(casey): Logging
         }
-    } else {
+    }
+    else
+    {
         // TODO(casey): Logging
     }
 

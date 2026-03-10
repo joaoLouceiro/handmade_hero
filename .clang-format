@@ -11,7 +11,7 @@ Standard: "c++17"
 
 IndentCaseLabels: true
 IndentCaseBlocks: true
-BreakBeforeBraces: Linux
+BreakBeforeBraces: Allman
 BinPackParameters: AlwaysOnePerLine
 BinPackArguments: false
 AllowAllArgumentsOnNextLine: false
