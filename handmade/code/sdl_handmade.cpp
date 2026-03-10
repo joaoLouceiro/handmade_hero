@@ -6,12 +6,13 @@
    $Notice: (C) Copyright 2014 by Molly Rocket, Inc. All Rights Reserved. $
    ======================================================================== */
 
-#include "SDL_audio.h"
 #include <SDL.h>
-#include <cmath>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
+
+// TODO: Implement sine ourselved
+#include <math.h>
 
 // NOTE: MAP_ANONYMOUS is not defined on Mac OS X and some other UNIX systems.
 // On the vast majority of those systems, one can use MAP_ANON instead.
@@ -24,6 +25,8 @@
 #define internal static
 #define local_persist static
 #define global_variable static
+
+#define Pi32 3.14159265359f
 
 typedef int8_t int8;
 typedef int16_t int16;
@@ -53,7 +56,6 @@ struct sdl_window_dimension {
 };
 
 global_variable sdl_offscreen_buffer GlobalBackbuffer;
-#define Pi32 3.14159265359f
 
 #define MAX_CONTROLLERS 4
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
@@ -83,7 +85,7 @@ internal void SDLAudioCallback(void *UserData,
     memcpy(AudioData, (uint8 *)(RingBuffer->Data) + RingBuffer->PlayCursor, Region1Size);
     memcpy(&AudioData[Region1Size], RingBuffer->Data, Region2Size);
     RingBuffer->PlayCursor = (RingBuffer->PlayCursor + Length) % RingBuffer->Size;
-    RingBuffer->WriteCursor = (RingBuffer->PlayCursor + 2048) % RingBuffer->Size;
+    RingBuffer->WriteCursor = (RingBuffer->PlayCursor + Length) % RingBuffer->Size;
 }
 
 internal void SDLInitAudio(int32 SamplesPerSecond,
@@ -94,7 +96,7 @@ internal void SDLInitAudio(int32 SamplesPerSecond,
     AudioSettings.freq = SamplesPerSecond;
     AudioSettings.format = AUDIO_S16LSB;
     AudioSettings.channels = 2;
-    AudioSettings.samples = 2056;
+    AudioSettings.samples = 512;
     AudioSettings.callback = &SDLAudioCallback;
     AudioSettings.userdata = &AudioRingBuffer;
 
@@ -107,7 +109,7 @@ internal void SDLInitAudio(int32 SamplesPerSecond,
     printf("Initialised an Audio device at frequency %d Hz, %d Channels, buffer size %d\n",
            AudioSettings.freq,
            AudioSettings.channels,
-           AudioSettings.samples);
+           AudioSettings.size);
 
     if (AudioSettings.format != AUDIO_S16LSB) {
         printf("Oops! We didn't get AUDIO_S16LSB as our sample format!\n");
@@ -273,6 +275,56 @@ bool HandleEvent(SDL_Event *Event)
     return (ShouldQuit);
 }
 
+struct sdl_sound_output {
+    int SamplesPerSecond;
+    int ToneHz;
+    int16 ToneVolume;
+    uint32 RunningSampleIndex;
+    int WavePeriod;
+    int BytesPerSample;
+    int SecondaryBufferSize;
+    real32 tSine;
+    int LatencySampleCount;
+};
+
+internal void SDLFillSoundBuffer(sdl_sound_output *SoundOutput,
+                                 int ByteToLock,
+                                 int BytesToWrite)
+{
+    void *Region1 = (uint8 *)AudioRingBuffer.Data + ByteToLock;
+    int Region1Size = BytesToWrite;
+    if (Region1Size + ByteToLock > SoundOutput->SecondaryBufferSize) {
+        Region1Size = SoundOutput->SecondaryBufferSize - ByteToLock;
+    }
+    void *Region2 = AudioRingBuffer.Data;
+    int Region2Size = BytesToWrite - Region1Size;
+    int Region1SampleCount = Region1Size / SoundOutput->BytesPerSample;
+    int16 *SampleOut = (int16 *)Region1;
+    for (int SampleIndex = 0; SampleIndex < Region1SampleCount; ++SampleIndex) {
+        // TODO(casey): Draw this out for people
+        real32 SineValue = sinf(SoundOutput->tSine);
+        int16 SampleValue = (int16)(SineValue * SoundOutput->ToneVolume);
+        *SampleOut++ = SampleValue;
+        *SampleOut++ = SampleValue;
+
+        SoundOutput->tSine += 2.0f * Pi32 * 1.0f / (real32)SoundOutput->WavePeriod;
+        ++SoundOutput->RunningSampleIndex;
+    }
+
+    int Region2SampleCount = Region2Size / SoundOutput->BytesPerSample;
+    SampleOut = (int16 *)Region2;
+    for (int SampleIndex = 0; SampleIndex < Region2SampleCount; ++SampleIndex) {
+        // TODO(casey): Draw this out for people
+        real32 SineValue = sinf(SoundOutput->tSine);
+        int16 SampleValue = (int16)(SineValue * SoundOutput->ToneVolume);
+        *SampleOut++ = SampleValue;
+        *SampleOut++ = SampleValue;
+
+        SoundOutput->tSine += 2.0f * Pi32 * 1.0f / (real32)SoundOutput->WavePeriod;
+        ++SoundOutput->RunningSampleIndex;
+    }
+}
+
 internal void SDLOpenGameControllers()
 {
     int MaxJoysticks = SDL_NumJoysticks();
@@ -308,61 +360,6 @@ internal void SDLCloseGameControllers()
     }
 }
 
-struct sdl_sound_output {
-    int SamplesPerSecond;
-    int ToneHz;
-    int16 ToneVolume;
-    uint32 RunningSampleIndex;
-    int WavePeriod;
-    int BytesPerSample;
-    int SecondaryBufferSize;
-    real32 tSine;
-    int LatencySampleCount;
-};
-
-void SDLFillSoundBuffer(sdl_sound_output *SoundOutput,
-                        int ByteToLock,
-                        int BytesToWrite)
-{
-
-    // TODO(casey): More strenuous test!
-    // TODO(casey): Switch to a sine wave
-    void *Region1 = (uint8 *)AudioRingBuffer.Data + ByteToLock;
-    int Region1Size = BytesToWrite;
-    if (Region1Size + ByteToLock > SoundOutput->SecondaryBufferSize)
-        Region1Size = SoundOutput->SecondaryBufferSize - ByteToLock;
-    void *Region2 = AudioRingBuffer.Data;
-    int Region2Size = BytesToWrite - Region1Size;
-
-    int Region1SampleCount = Region1Size / SoundOutput->BytesPerSample;
-    int16 *SampleOut = (int16 *)Region1;
-    int SampleIndex1;
-    for (SampleIndex1 = 0; SampleIndex1 < Region1SampleCount; ++SampleIndex1) {
-        real32 SineValue = sinf(SoundOutput->tSine);
-        int16 SampleValue = (int16)(SineValue * SoundOutput->ToneVolume);
-        *SampleOut++ = SampleValue;
-        *SampleOut++ = SampleValue;
-
-        ++SoundOutput->RunningSampleIndex;
-        SoundOutput->tSine += 2.0f * Pi32 * 1.0f / (real32)SoundOutput->WavePeriod;
-    }
-
-    int Region2SampleCount = Region2Size / SoundOutput->BytesPerSample;
-    SampleOut = (int16 *)Region2;
-    int SampleIndex2;
-    for (SampleIndex2 = 0; SampleIndex2 < Region2SampleCount; ++SampleIndex2) {
-        real32 SineValue = sinf(SoundOutput->tSine);
-        int16 SampleValue = (int16)(SineValue * SoundOutput->ToneVolume);
-        *SampleOut++ = SampleValue;
-        *SampleOut++ = SampleValue;
-
-        ++SoundOutput->RunningSampleIndex;
-        SoundOutput->tSine += 2.0f * Pi32 * 1.0f / (real32)SoundOutput->WavePeriod;
-    }
-
-    // }
-}
-
 int main(int argc,
          char *argv[])
 {
@@ -388,18 +385,20 @@ int main(int argc,
 
             sdl_sound_output SoundOutput = {};
             SoundOutput.SamplesPerSecond = 48000;
-            SoundOutput.ToneHz = 260;
-            SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz;
+            SoundOutput.ToneHz = 256;
             SoundOutput.ToneVolume = 3000;
             SoundOutput.RunningSampleIndex = 0;
+            SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz;
             SoundOutput.BytesPerSample = sizeof(int16) * 2;
             SoundOutput.SecondaryBufferSize =
                 SoundOutput.SamplesPerSecond * SoundOutput.BytesPerSample;
+            SoundOutput.tSine = 0.0f;
             SoundOutput.LatencySampleCount = SoundOutput.SamplesPerSecond / 15;
-
             // Open our audio device:
             SDLInitAudio(48000, SoundOutput.SecondaryBufferSize);
-            SDLFillSoundBuffer(&SoundOutput, 0, SoundOutput.SecondaryBufferSize);
+            SDLFillSoundBuffer(&SoundOutput,
+                               0,
+                               SoundOutput.LatencySampleCount * SoundOutput.BytesPerSample);
             SDL_PauseAudio(0);
 
             while (Running) {
@@ -455,20 +454,31 @@ int main(int argc,
                         if (AButton) {
                             YOffset += 2;
                         }
-                        SoundOutput.ToneHz = 512 + (int)(256.0f * ((real32)StickY / 30000.0f));
+                        if (BButton) {
+                            if (RumbleHandles[ControllerIndex]) {
+                                SDL_HapticRumblePlay(RumbleHandles[ControllerIndex], 0.5f, 2000);
+                            }
+                        }
+
+                        XOffset += StickX / 4096;
+                        YOffset += StickY / 4096;
+
+                        SoundOutput.ToneHz = 512 + (int)(256.0f * ((real32)StickY / 40000.0f));
                         SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz;
                     } else {
                         // TODO: This controller is not plugged in.
                     }
                 }
+
                 RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
 
+                // Sound output test
                 SDL_LockAudio();
                 int ByteToLock = (SoundOutput.RunningSampleIndex * SoundOutput.BytesPerSample) %
                                  SoundOutput.SecondaryBufferSize;
-                int TargetCursor = (AudioRingBuffer.PlayCursor +
-                                    (SoundOutput.LatencySampleCount * SoundOutput.BytesPerSample)) %
-                                   SoundOutput.SecondaryBufferSize;
+                int TargetCursor = ((AudioRingBuffer.PlayCursor + (SoundOutput.LatencySampleCount *
+                                                                   SoundOutput.BytesPerSample)) %
+                                    SoundOutput.SecondaryBufferSize);
                 int BytesToWrite;
                 if (ByteToLock > TargetCursor) {
                     BytesToWrite = (SoundOutput.SecondaryBufferSize - ByteToLock);
@@ -476,6 +486,7 @@ int main(int argc,
                 } else {
                     BytesToWrite = TargetCursor - ByteToLock;
                 }
+
                 SDL_UnlockAudio();
                 SDLFillSoundBuffer(&SoundOutput, ByteToLock, BytesToWrite);
 
