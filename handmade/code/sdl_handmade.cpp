@@ -6,6 +6,7 @@
    $Notice: (C) Copyright 2014 by Molly Rocket, Inc. All Rights Reserved. $
    ======================================================================== */
 
+#include "SDL_timer.h"
 #include <SDL.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -454,6 +455,11 @@ int main(int argc,
                                SoundOutput.LatencySampleCount * SoundOutput.BytesPerSample);
             SDL_PauseAudio(0);
 
+            int64 PerfCountFrequency = SDL_GetPerformanceFrequency();
+            int64 LastCounter = SDL_GetPerformanceCounter();
+
+            uint64 LastCycleCount = __rdtsc();
+
             while (Running)
             {
                 SDL_Event Event;
@@ -558,6 +564,22 @@ int main(int argc,
                 SDLUpdateWindow(Window, Renderer, &GlobalBackbuffer);
 
                 ++XOffset;
+
+                int64 EndCycleCount = __rdtsc();
+
+                int64 EndCounter = SDL_GetPerformanceCounter();
+
+                int64 CyclesElapsed = EndCycleCount - LastCycleCount;
+
+                int64 CounterElapsed = EndCounter - LastCounter;
+                int32 MSPerFrame = (int32)((1000 * CounterElapsed) / PerfCountFrequency);
+                int32 FPS = PerfCountFrequency / CounterElapsed;
+                int32 MCPF = (int32)(CyclesElapsed / (1000 * 1000));
+
+                printf("%dms/f,\t%df/s,\t%dmc/f\n", MSPerFrame, FPS, MCPF);
+
+                LastCounter = EndCounter;
+                LastCycleCount = EndCycleCount;
             }
         }
         else
