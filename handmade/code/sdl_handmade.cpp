@@ -31,6 +31,35 @@ global_variable sdl_offscreen_buffer GlobalBackbuffer;
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
 SDL_Haptic *RumbleHandles[MAX_CONTROLLERS];
 
+struct sdl_audio_ring_buffer
+{
+    int Size;
+    int WriteCursor;
+    int PlayCursor;
+    void *Data;
+};
+
+sdl_audio_ring_buffer AudioRingBuffer;
+
+internal void SDLAudioCallback(void *UserData,
+                               Uint8 *AudioData,
+                               int Length)
+{
+    sdl_audio_ring_buffer *RingBuffer = (sdl_audio_ring_buffer *)UserData;
+
+    int Region1Size = Length;
+    int Region2Size = 0;
+    if (RingBuffer->PlayCursor + Length > RingBuffer->Size)
+    {
+        Region1Size = RingBuffer->Size - RingBuffer->PlayCursor;
+        Region2Size = Length - Region1Size;
+    }
+    memcpy(AudioData, (uint8 *)(RingBuffer->Data) + RingBuffer->PlayCursor, Region1Size);
+    memcpy(&AudioData[Region1Size], RingBuffer->Data, Region2Size);
+    RingBuffer->PlayCursor = (RingBuffer->PlayCursor + Length) % RingBuffer->Size;
+    RingBuffer->WriteCursor = (RingBuffer->PlayCursor + Length) % RingBuffer->Size;
+}
+
 internal void SDLInitAudio(int32 SamplesPerSecond,
                            int32 BufferSize)
 {
@@ -39,9 +68,20 @@ internal void SDLInitAudio(int32 SamplesPerSecond,
     AudioSettings.freq = SamplesPerSecond;
     AudioSettings.format = AUDIO_S16LSB;
     AudioSettings.channels = 2;
-    AudioSettings.samples = BufferSize;
+    AudioSettings.samples = 512;
+    AudioSettings.callback = &SDLAudioCallback;
+    AudioSettings.userdata = &AudioRingBuffer;
+
+    AudioRingBuffer.Size = BufferSize;
+    AudioRingBuffer.Data = calloc(BufferSize, 1);
+    AudioRingBuffer.PlayCursor = AudioRingBuffer.WriteCursor = 0;
 
     SDL_OpenAudio(&AudioSettings, 0);
+
+    printf("Initialised an Audio device at frequency %d Hz, %d Channels, buffer size %d\n",
+           AudioSettings.freq,
+           AudioSettings.channels,
+           AudioSettings.size);
 
     if (AudioSettings.format != AUDIO_S16LSB)
     {
@@ -239,26 +279,36 @@ struct sdl_sound_output
 
 internal void SDLFillSoundBuffer(sdl_sound_output *SoundOutput,
                                  int ByteToLock,
-                                 int BytesToWrite)
+                                 int BytesToWrite,
+                                 game_sound_output_buffer *SoundBuffer)
 {
-    int SampleCount = BytesToWrite / SoundOutput->BytesPerSample;
-    void *AudioBuffer = malloc(BytesToWrite);
-    int16 *SampleOut = (int16_t *)AudioBuffer;
-    for (int SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
+    int16_t *Samples = SoundBuffer->Samples;
+    void *Region1 = (uint8 *)AudioRingBuffer.Data + ByteToLock;
+    int Region1Size = BytesToWrite;
+    if (Region1Size + ByteToLock > SoundOutput->SecondaryBufferSize)
     {
-        // TODO(casey): Draw this out for people
-        real32 SineValue = sinf(SoundOutput->tSine);
-        int16 SampleValue = (int16)(SineValue * SoundOutput->ToneVolume);
-        *SampleOut++ = SampleValue;
-        *SampleOut++ = SampleValue;
+        Region1Size = SoundOutput->SecondaryBufferSize - ByteToLock;
+    }
+    void *Region2 = AudioRingBuffer.Data;
+    int Region2Size = BytesToWrite - Region1Size;
+    int Region1SampleCount = Region1Size / SoundOutput->BytesPerSample;
+    int16 *SampleOut = (int16 *)Region1;
+    for (int SampleIndex = 0; SampleIndex < Region1SampleCount; ++SampleIndex)
+    {
+        *SampleOut++ = *Samples++;
+        *SampleOut++ = *Samples++;
 
-        SoundOutput->tSine += 2.0f * Pi32 * 1.0f / (real32)SoundOutput->WavePeriod;
         ++SoundOutput->RunningSampleIndex;
     }
 
-    SDL_QueueAudio(1, AudioBuffer, BytesToWrite);
-
-    free(AudioBuffer);
+    int Region2SampleCount = Region2Size / SoundOutput->BytesPerSample;
+    SampleOut = (int16 *)Region2;
+    for (int SampleIndex = 0; SampleIndex < Region2SampleCount; ++SampleIndex)
+    {
+        *SampleOut++ = *Samples++;
+        *SampleOut++ = *Samples++;
+        ++SoundOutput->RunningSampleIndex;
+    }
 }
 
 internal void SDLOpenGameControllers()
@@ -305,7 +355,6 @@ internal void SDLCloseGameControllers()
 int main(int argc,
          char *argv[])
 {
-
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC | SDL_INIT_AUDIO);
     uint64 PerfCountFrequency = SDL_GetPerformanceFrequency();
     // Initialise our Game Controllers:
@@ -330,19 +379,22 @@ int main(int argc,
             int YOffset = 0;
 
             sdl_sound_output SoundOutput = {};
-
             SoundOutput.SamplesPerSecond = 48000;
             SoundOutput.ToneHz = 256;
             SoundOutput.ToneVolume = 3000;
+            SoundOutput.RunningSampleIndex = 0;
             SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz;
             SoundOutput.BytesPerSample = sizeof(int16) * 2;
+            SoundOutput.SecondaryBufferSize =
+                SoundOutput.SamplesPerSecond * SoundOutput.BytesPerSample;
+            SoundOutput.tSine = 0.0f;
             SoundOutput.LatencySampleCount = SoundOutput.SamplesPerSecond / 15;
             // Open our audio device:
-            SDLInitAudio(SoundOutput.SamplesPerSecond,
-                         SoundOutput.SamplesPerSecond * SoundOutput.BytesPerSample / 60);
-            SDLFillSoundBuffer(&SoundOutput,
-                               0,
-                               SoundOutput.LatencySampleCount * SoundOutput.BytesPerSample);
+            SDLInitAudio(48000, SoundOutput.SecondaryBufferSize);
+            // NOTE: calloc() allocates memory and clears it to zero. It accepts the number of
+            // things being allocated and their size.
+            int16 *Samples =
+                (int16 *)calloc(SoundOutput.SamplesPerSecond, SoundOutput.BytesPerSample);
             SDL_PauseAudio(0);
 
             uint64 LastCounter = SDL_GetPerformanceCounter();
@@ -401,6 +453,18 @@ int main(int argc,
                         int16 StickY = SDL_GameControllerGetAxis(ControllerHandles[ControllerIndex],
                                                                  SDL_CONTROLLER_AXIS_LEFTY);
 
+                        if (AButton)
+                        {
+                            YOffset += 2;
+                        }
+                        if (BButton)
+                        {
+                            if (RumbleHandles[ControllerIndex])
+                            {
+                                SDL_HapticRumblePlay(RumbleHandles[ControllerIndex], 0.5f, 2000);
+                            }
+                        }
+
                         XOffset += StickX / 4096;
                         YOffset += StickY / 4096;
 
@@ -413,17 +477,39 @@ int main(int argc,
                     }
                 }
 
+                // Sound output test
+                SDL_LockAudio();
+                int ByteToLock = (SoundOutput.RunningSampleIndex * SoundOutput.BytesPerSample) %
+                                 SoundOutput.SecondaryBufferSize;
+                int TargetCursor = ((AudioRingBuffer.PlayCursor + (SoundOutput.LatencySampleCount *
+                                                                   SoundOutput.BytesPerSample)) %
+                                    SoundOutput.SecondaryBufferSize);
+                int BytesToWrite;
+                if (ByteToLock > TargetCursor)
+                {
+                    BytesToWrite = (SoundOutput.SecondaryBufferSize - ByteToLock);
+                    BytesToWrite += TargetCursor;
+                }
+                else
+                {
+                    BytesToWrite = TargetCursor - ByteToLock;
+                }
+
+                SDL_UnlockAudio();
+
+                game_sound_output_buffer SoundBuffer = {};
+                SoundBuffer.SamplesPerSecond = SoundOutput.SamplesPerSecond;
+                SoundBuffer.SampleCount = BytesToWrite / SoundOutput.BytesPerSample;
+                SoundBuffer.Samples = Samples;
+
                 game_offscreen_buffer Buffer = {};
                 Buffer.Memory = GlobalBackbuffer.Memory;
                 Buffer.Width = GlobalBackbuffer.Width;
                 Buffer.Height = GlobalBackbuffer.Height;
                 Buffer.Pitch = GlobalBackbuffer.Pitch;
-                GameUpdateAndRender(&Buffer, XOffset, YOffset);
+                GameUpdateAndRender(&Buffer, XOffset, YOffset, &SoundBuffer, SoundOutput.ToneHz);
 
-                // Sound output test
-                int TargetQueueBytes = SoundOutput.LatencySampleCount * SoundOutput.BytesPerSample;
-                int BytesToWrite = TargetQueueBytes - SDL_GetQueuedAudioSize(1);
-                SDLFillSoundBuffer(&SoundOutput, 0, BytesToWrite);
+                SDLFillSoundBuffer(&SoundOutput, ByteToLock, BytesToWrite, &SoundBuffer);
 
                 SDLUpdateWindow(Window, Renderer, &GlobalBackbuffer);
                 uint64 EndCycleCount = __rdtsc();
