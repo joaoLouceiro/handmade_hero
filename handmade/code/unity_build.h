@@ -20,6 +20,8 @@ typedef uint64_t uint64;
 typedef float real32;
 typedef double real64;
 
+typedef uint32_t bool32;
+
 #include <math.h>
 #include <stdio.h>
 
@@ -27,3 +29,4 @@ typedef double real64;
 #include <sys/mman.h>
 
 #include "handmade.h"
+#include "sdl_handmade.h"
