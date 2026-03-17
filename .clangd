@@ -1,7 +1,11 @@
-# If:
-#   PathMatch: .*\.[h|h..|c|c..]
 CompileFlags:
-  Add: [-FIunity_build.cpp,-I/usr/include/x86_64-linux-gnu,-I/usr/include/SDL2,-std=c++17]
-  Compiler: clang
-Completion:
-  ArgumentLists: Delimiters
+  Add: 
+    - -Iunity_build.cpp
+    - -I/usr/include/x86_64-linux-gnu
+    - -I/usr/include/SDL2
+    - -std=c++17
+    - -DHANDMADE_SDL=1
+# Index:
+#   Background: Build
+# Completion:
+#   ArgumentLists: Delimiters
