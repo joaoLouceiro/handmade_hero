@@ -5,7 +5,3 @@ CompileFlags:
     - -I/usr/include/SDL2
     - -std=c++17
     - -DHANDMADE_SDL=1
-# Index:
-#   Background: Build
-# Completion:
-#   ArgumentLists: Delimiters
