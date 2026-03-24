@@ -5,17 +5,86 @@
    $Creator: Casey Muratori $
    $Notice: (C) Copyright 2014 by Molly Rocket, Inc. All Rights Reserved. $
    ======================================================================== */
-#include "handmade.h"
 #include "unity_build.h"
-#include <sys/mman.h>
 
 global_variable sdl_offscreen_buffer GlobalBackbuffer;
 
-#define MAX_CONTROLLERS 4
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
 SDL_Haptic *RumbleHandles[MAX_CONTROLLERS];
 
 sdl_audio_ring_buffer AudioRingBuffer;
+
+internal bool32 DEBUGPlatformWriteEntireFile(char *Filename,
+                                             uint32 MemorySize,
+                                             void *Memory)
+{
+    int FileHandle = open(Filename, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (FileHandle == -1)
+    {
+        return false;
+    }
+
+    uint32 BytesToWrite = MemorySize;
+    uint8 *NextByteLocation = (uint8 *)Memory;
+    while (BytesToWrite)
+    {
+        uint32 BytesWritten = write(FileHandle, NextByteLocation, BytesToWrite);
+        if (BytesWritten == -1)
+        {
+            close(FileHandle);
+            return false;
+        }
+        BytesToWrite -= BytesWritten;
+        NextByteLocation += BytesWritten;
+    }
+    close(FileHandle);
+    return true;
+}
+
+static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename)
+{
+    debug_read_file_result Result = {};
+    int FileHandle = open(Filename, O_RDONLY);
+
+    if (FileHandle == -1)
+    {
+        return Result;
+    }
+    struct stat FileStatus;
+    if (fstat(FileHandle, &FileStatus) == -1)
+    {
+        close(FileHandle);
+        return Result;
+    }
+    Result.ContentsSize = SafeTruncateUInt64(FileStatus.st_size);
+    Result.Contents = malloc(Result.ContentsSize);
+    if (!Result.Contents)
+    {
+        Result.ContentsSize = 0;
+        close(FileHandle);
+        return Result;
+    }
+    uint32 BytesToRead = Result.ContentsSize;
+    uint8 *NextByteLocation = (uint8 *)Result.Contents;
+    while (BytesToRead)
+    {
+        uint32 BytesRead = read(FileHandle, NextByteLocation, BytesToRead);
+        if (BytesRead == -1)
+        {
+            free(Result.Contents);
+            Result.Contents = 0;
+            Result.ContentsSize = 0;
+            close(FileHandle);
+            return Result;
+        }
+        BytesToRead -= BytesRead;
+        NextByteLocation += BytesRead;
+    }
+    close(FileHandle);
+    return Result;
+}
+
+internal void DEBUGPlatformFreeFileMemory(void *Memory) { free(Memory); }
 
 internal void SDLAudioCallback(void *UserData,
                                Uint8 *AudioData,

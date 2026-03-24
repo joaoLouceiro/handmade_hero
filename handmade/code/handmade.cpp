@@ -1,6 +1,5 @@
 #include "unity_build.h"
 
-#include "handmade.h"
 internal void GameOutputSound(game_sound_output_buffer *SoundBuffer,
                               int ToneHz)
 {
@@ -52,6 +51,15 @@ internal void GameUpdateAndRender(game_memory *Memory,
     game_state *GameState = (game_state *)Memory;
     if (!Memory->IsInitialized)
     {
+        char *Filename = "/home/jlouceiro/projects/handmade_hero/handmade/code/sdl_handmade.cpp";
+
+        debug_read_file_result File = DEBUGPlatformReadEntireFile(Filename);
+        if (File.Contents)
+        {
+            DEBUGPlatformWriteEntireFile("test.out", File.ContentsSize, File.Contents);
+            DEBUGPlatformFreeFileMemory(File.Contents);
+        }
+
         GameState->ToneHz = 256;
 
         // TODO(casey): This may be more appropriate to do in the platform layer

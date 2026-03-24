@@ -1,5 +1,12 @@
 #pragma once
+
 #include "unity_build.h"
+
+#include <SDL.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 struct sdl_offscreen_buffer
 {
