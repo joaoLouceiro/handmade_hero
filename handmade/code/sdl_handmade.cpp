@@ -28,7 +28,7 @@ internal bool32 DEBUGPlatformWriteEntireFile(char *Filename,
     uint8 *NextByteLocation = (uint8 *)Memory;
     while (BytesToWrite)
     {
-        uint32 BytesWritten = write(FileHandle, NextByteLocation, BytesToWrite);
+        ssize_t BytesWritten = write(FileHandle, NextByteLocation, BytesToWrite);
         if (BytesWritten == -1)
         {
             close(FileHandle);
@@ -68,7 +68,7 @@ static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename)
     uint8 *NextByteLocation = (uint8 *)Result.Contents;
     while (BytesToRead)
     {
-        uint32 BytesRead = read(FileHandle, NextByteLocation, BytesToRead);
+        ssize_t BytesRead = read(FileHandle, NextByteLocation, BytesToRead);
         if (BytesRead == -1)
         {
             free(Result.Contents);
@@ -470,7 +470,7 @@ int main(int argc,
                         }
                     }
 
-                    int MaxControllerCount = MAX_CONTROLLERS;
+                    size_t MaxControllerCount = MAX_CONTROLLERS;
                     if (MaxControllerCount < ArrayCount(NewInput->Controllers))
                     {
                         MaxControllerCount = ArrayCount(NewInput->Controllers);

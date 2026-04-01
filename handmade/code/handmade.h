@@ -2,6 +2,29 @@
 
 #include "unity_build.h"
 
+inline uint32 SafeTruncateUInt64(uint64 Value)
+{
+    Assert(Value <= 0xFFFFFFFF);
+    uint32 Result = (uint32)Value;
+    return (Result);
+}
+
+// NOTE(casey): Services that the platform layer provides to the game
+
+#if HANDMADE_INTERNAL
+struct debug_read_file_result
+{
+    uint32 ContentsSize;
+    void *Contents;
+};
+
+internal debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename);
+
+internal void DEBUGPlatformFreeFileMemory(void *BitmapMemory);
+internal bool32 DEBUGPlatformWriteEntireFile(char *Filename,
+                                             uint32 MemorySize,
+                                             void *Memory);
+#endif
 struct game_offscreen_buffer
 {
     void *Memory;
