@@ -65,22 +65,30 @@ internal void GameUpdateAndRender(game_memory *Memory,
         // TODO(casey): This may be more appropriate to do in the platform layer
         Memory->IsInitialized = true;
     }
-    game_controller_input *Input0 = &Input->Controllers[0];
-
-    if (Input0->IsAnalog)
+    for (int ControllerIndex = 0; ControllerIndex < ArrayCount(Input->Controllers);
+         ControllerIndex++)
     {
-        GameState->BlueOffset += (int)4.0f * (Input0->EndX);
-        GameState->ToneHz = 256 + (int)(128.0f * (Input0->EndY));
-    }
-    else
-    {
-    }
+        game_controller_input *Controller = &Input->Controllers[ControllerIndex];
 
-    if (Input0->Down.EndedDown)
-    {
-        GameState->GreenOffset += 1;
+        if (Controller->IsAnalog)
+        {
+            // NOTE: (casey): use analog movement tuning
+            GameState->BlueOffset += (int)4.0f * (Controller->StickAverageX);
+            GameState->ToneHz = 256 + (int)(128.0f * (Controller->StickAverageY));
+        }
+        else
+        {
+            // NOTE: (casey): use digital movement tuning
+            if (Controller->MoveDown.EndedDown)
+            {
+                GameState->GreenOffset += 1;
+            }
+            if (Controller->MoveUp.EndedDown)
+            {
+                GameState->GreenOffset -= 1;
+            }
+        }
     }
-
     // TODO(casey): Allow jsample offsets here for more robust platform options
     GameOutputSound(SoundBuffer, GameState->ToneHz);
     RenderWeirdGradient(Buffer, GameState->BlueOffset, GameState->GreenOffset);

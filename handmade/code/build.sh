@@ -7,6 +7,7 @@ bear -o ../compile_commands.json -- \
   clang++ \
   ../handmade/code/unity_build.cpp -o handmadehero \
   $(sdl2-config --cflags --libs) \
+  -std=c++11 \
   -g \
   -lm \
   -DHANDMADE_SDL=1 \
@@ -24,7 +25,9 @@ bear -o ../compile_commands.json -- \
   -Wno-missing-field-initializers \
   -Wno-gnu-anonymous-struct \
   -Wno-nested-anon-types \
+  -Wno-sign-compare \
   -Wno-unused-function \
   -fno-exceptions \
-  -fno-rtti
+  -fno-rtti \
+  -fdiagnostics-color=always
 popd

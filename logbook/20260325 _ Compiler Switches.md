@@ -1,3 +1,5 @@
+# Lost in compiler land
+
 Even before I started following the stream, this topic sent me into a deep rabbit hole, fighting with `clangd`.
 
 I had spend most of the time I was working on last stream fighting with the `__FILE__` preprocessor. I just couldn't get `open()` to find the damn file. After some debating with Claude, I eventually got to the heart of it: `__FILE__` was giving me a relative path, when I needed a full path. He actually gave me some pretty good tips:
@@ -21,6 +23,7 @@ warning: deprecated conversion from string constant to ‘char*’ [-Wwrite-stri
 Lo an behold, as soon as I opened today's episode guide, we are dealing with that damn warning. The solution was to add a set of flags to the compilation script, but I had been triggered.
 
 My main issue was with the `DEBUG*` functions from day 15. They were all showing up errors related to the function being declared, but having no linkage.
+
 ```
 Function has internal linkage but is not defined
 ```
@@ -45,5 +48,3 @@ So, on to the rest of the flags. `Clang` seems to be a bit more permissive than 
 Of course, this too took me on a time-consuming side-quest. So, here's the thing: in most IDE's I've used, if there is an error in the project, I can just click the line that says where the error is and I will be teletransported there, but in Neovim it looked like there is no such feature. I was pleased to find that I was (kinda) wrong.
 
 Using `gF` should send me to the correct place. That is because Vim interprets a string with `filename:line:column` as a location in a file, so it can send me where I expect it to (this also means that we can just write the name of a file in the current buffer and use `gF` to be taken there). So hovering over the error message should allow me to go directly to it's location, but the file was not being found. Turns out there was a mismatch between the location of the error message (coming from the `/build` directory) and the actual location of the file (`/handmade/code`). Surely there was a way to solve this, no? Some Claude-fu later, I came up with a nifty vim script that allows for the `cwd` to change to `/build` without affecting the file explorer or so.
-
-

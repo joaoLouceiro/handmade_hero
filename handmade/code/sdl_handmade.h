@@ -4,10 +4,12 @@
 
 #include <SDL.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <x86intrin.h>
 
 struct sdl_offscreen_buffer
 {
