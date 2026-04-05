@@ -14,42 +14,16 @@ SDL_Haptic *RumbleHandles[MAX_CONTROLLERS];
 
 sdl_audio_ring_buffer AudioRingBuffer;
 
-internal bool32 DEBUGPlatformWriteEntireFile(char *Filename,
-                                             uint32 MemorySize,
-                                             void *Memory)
-{
-    int FileHandle = open(Filename, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    if (FileHandle == -1)
-    {
-        return false;
-    }
-
-    uint32 BytesToWrite = MemorySize;
-    uint8 *NextByteLocation = (uint8 *)Memory;
-    while (BytesToWrite)
-    {
-        ssize_t BytesWritten = write(FileHandle, NextByteLocation, BytesToWrite);
-        if (BytesWritten == -1)
-        {
-            close(FileHandle);
-            return false;
-        }
-        BytesToWrite -= BytesWritten;
-        NextByteLocation += BytesWritten;
-    }
-    close(FileHandle);
-    return true;
-}
-
-static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename)
+internal debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename)
 {
     debug_read_file_result Result = {};
-    int FileHandle = open(Filename, O_RDONLY);
 
+    int FileHandle = open(Filename, O_RDONLY);
     if (FileHandle == -1)
     {
         return Result;
     }
+
     struct stat FileStatus;
     if (fstat(FileHandle, &FileStatus) == -1)
     {
@@ -57,13 +31,15 @@ static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename)
         return Result;
     }
     Result.ContentsSize = SafeTruncateUInt64(FileStatus.st_size);
+
     Result.Contents = malloc(Result.ContentsSize);
     if (!Result.Contents)
     {
-        Result.ContentsSize = 0;
         close(FileHandle);
+        Result.ContentsSize = 0;
         return Result;
     }
+
     uint32 BytesToRead = Result.ContentsSize;
     uint8 *NextByteLocation = (uint8 *)Result.Contents;
     while (BytesToRead)
@@ -80,11 +56,40 @@ static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename)
         BytesToRead -= BytesRead;
         NextByteLocation += BytesRead;
     }
+
     close(FileHandle);
-    return Result;
+    return (Result);
 }
 
 internal void DEBUGPlatformFreeFileMemory(void *Memory) { free(Memory); }
+
+internal bool32 DEBUGPlatformWriteEntireFile(char *Filename,
+                                             uint32 MemorySize,
+                                             void *Memory)
+{
+    int FileHandle = open(Filename, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+
+    if (!FileHandle)
+        return false;
+
+    uint32 BytesToWrite = MemorySize;
+    uint8 *NextByteLocation = (uint8 *)Memory;
+    while (BytesToWrite)
+    {
+        ssize_t BytesWritten = write(FileHandle, NextByteLocation, BytesToWrite);
+        if (BytesWritten == -1)
+        {
+            close(FileHandle);
+            return false;
+        }
+        BytesToWrite -= BytesWritten;
+        NextByteLocation += BytesWritten;
+    }
+
+    close(FileHandle);
+
+    return true;
+}
 
 internal void SDLAudioCallback(void *UserData,
                                Uint8 *AudioData,
@@ -396,19 +401,6 @@ internal void SDLOpenGameControllers()
     }
 }
 
-internal void SDLCloseGameControllers()
-{
-    for (int ControllerIndex = 0; ControllerIndex < MAX_CONTROLLERS; ++ControllerIndex)
-    {
-        if (ControllerHandles[ControllerIndex])
-        {
-            if (RumbleHandles[ControllerIndex])
-                SDL_HapticClose(RumbleHandles[ControllerIndex]);
-            SDL_GameControllerClose(ControllerHandles[ControllerIndex]);
-        }
-    }
-}
-
 internal void SDLProcessGameControllerButton(game_button_state *OldState,
                                              game_button_state *NewState,
                                              bool Value)
@@ -432,6 +424,19 @@ internal real32 SDLProcessGameControllerAxisValue(int16 Value,
     }
 
     return (Result);
+}
+
+internal void SDLCloseGameControllers()
+{
+    for (int ControllerIndex = 0; ControllerIndex < MAX_CONTROLLERS; ++ControllerIndex)
+    {
+        if (ControllerHandles[ControllerIndex])
+        {
+            if (RumbleHandles[ControllerIndex])
+                SDL_HapticClose(RumbleHandles[ControllerIndex]);
+            SDL_GameControllerClose(ControllerHandles[ControllerIndex]);
+        }
+    }
 }
 
 int main(int argc,
@@ -468,9 +473,8 @@ int main(int argc,
             SoundOutput.BytesPerSample = sizeof(int16) * 2;
             SoundOutput.SecondaryBufferSize =
                 SoundOutput.SamplesPerSecond * SoundOutput.BytesPerSample;
-            SoundOutput.tSine = 0.0f;
-            SoundOutput.LatencySampleCount = SoundOutput.SamplesPerSecond / 15;
-
+            SoundOutput.LatencySampleCount = SoundOutput.SamplesPerSecond / 30;
+            // Open our audio device:
             SDLInitAudio(48000, SoundOutput.SecondaryBufferSize);
             // NOTE: calloc() allocates memory and clears it to zero. It accepts the number of
             // things being allocated and their size.
@@ -487,25 +491,24 @@ int main(int argc,
             GameMemory.PermanentStorageSize = Megabytes(64);
             GameMemory.TransientStorageSize = Gigabytes(4);
 
-            uint64 TotalSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
+            uint64 TotalStorageSize =
+                GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
 
             GameMemory.PermanentStorage =
-                mmap(BaseAddress, TotalSize, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+                mmap(0, TotalStorageSize, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
 
             Assert(GameMemory.PermanentStorage);
 
             GameMemory.TransientStorage =
-                ((uint8 *)GameMemory.PermanentStorage + GameMemory.PermanentStorageSize);
-
+                (uint8 *)(GameMemory.PermanentStorage) + GameMemory.PermanentStorageSize;
             uint64 LastCounter = SDL_GetPerformanceCounter();
-            uint64 LastCycleCount = __rdtsc();
+            uint64 LastCycleCount = _rdtsc();
             while (Running)
             {
 
                 game_controller_input *OldKeyboardController = GetController(OldInput, 0);
                 game_controller_input *NewKeyboardController = GetController(NewInput, 0);
                 *NewKeyboardController = {};
-                NewKeyboardController->IsConnected = true;
                 for (int ButtonIndex = 0; ButtonIndex < ArrayCount(NewKeyboardController->Buttons);
                      ++ButtonIndex)
                 {
@@ -533,14 +536,14 @@ int main(int argc,
                     if (ControllerHandles[ControllerIndex] != 0 &&
                         SDL_GameControllerGetAttached(ControllerHandles[ControllerIndex]))
                     {
-
-                        game_controller_input *NewController =
-                            GetController(NewInput, 1 + ControllerIndex);
                         game_controller_input *OldController =
-                            GetController(OldInput, 1 + ControllerIndex);
+                            GetController(OldInput, ControllerIndex + 1);
+                        game_controller_input *NewController =
+                            GetController(NewInput, ControllerIndex + 1);
 
-                        // NOTE: We have a controller with index ControllerIndex.
+                        NewController->IsConnected = true;
 
+                        // TODO: Do something with the DPad, Start and Selected?
                         bool Up = SDL_GameControllerGetButton(ControllerHandles[ControllerIndex],
                                                               SDL_CONTROLLER_BUTTON_DPAD_UP);
                         bool Down = SDL_GameControllerGetButton(ControllerHandles[ControllerIndex],
@@ -553,11 +556,6 @@ int main(int argc,
                                                                  SDL_CONTROLLER_BUTTON_START);
                         bool Back = SDL_GameControllerGetButton(ControllerHandles[ControllerIndex],
                                                                 SDL_CONTROLLER_BUTTON_BACK);
-
-                        int16 StickX = SDL_GameControllerGetAxis(ControllerHandles[ControllerIndex],
-                                                                 SDL_CONTROLLER_AXIS_LEFTX);
-                        int16 StickY = SDL_GameControllerGetAxis(ControllerHandles[ControllerIndex],
-                                                                 SDL_CONTROLLER_AXIS_LEFTY);
 
                         SDLProcessGameControllerButton(
                             &(OldController->LeftShoulder),
@@ -690,12 +688,12 @@ int main(int argc,
 
                 game_input *Temp = NewInput;
                 NewInput = OldInput;
-                OldInput = NewInput;
+                OldInput = Temp;
 
                 SDLFillSoundBuffer(&SoundOutput, ByteToLock, BytesToWrite, &SoundBuffer);
 
                 SDLUpdateWindow(Window, Renderer, &GlobalBackbuffer);
-                uint64 EndCycleCount = __rdtsc();
+                uint64 EndCycleCount = _rdtsc();
                 uint64 EndCounter = SDL_GetPerformanceCounter();
                 uint64 CounterElapsed = EndCounter - LastCounter;
                 uint64 CyclesElapsed = EndCycleCount - LastCycleCount;
