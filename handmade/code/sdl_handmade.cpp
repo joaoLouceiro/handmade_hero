@@ -147,6 +147,29 @@ sdl_window_dimension SDLGetWindowDimension(SDL_Window *Window)
     return (Result);
 }
 
+internal int SDLGetWindowRefreshRate(SDL_Window *Window)
+{
+    SDL_DisplayMode Mode;
+    int DisplayIndex = SDL_GetWindowDisplayIndex(Window);
+    // If we can't find the refresh rate, we'll return this:
+    int DefaultRefreshRate = 60;
+    if (SDL_GetDesktopDisplayMode(DisplayIndex, &Mode) != 0)
+    {
+        return DefaultRefreshRate;
+    }
+    if (Mode.refresh_rate == 0)
+    {
+        return DefaultRefreshRate;
+    }
+    return Mode.refresh_rate;
+}
+
+internal real32 SDLGetSecondsElapsed(uint64 OldCounter,
+                                     uint64 CurrentCounter)
+{
+    return ((real32)(CurrentCounter - OldCounter) / (real32)(SDL_GetPerformanceFrequency()));
+}
+
 internal void SDLResizeTexture(sdl_offscreen_buffer *Buffer,
                                SDL_Renderer *Renderer,
                                int Width,
@@ -457,6 +480,9 @@ int main(int argc,
     {
         // Create a "Renderer" for our window.
         SDL_Renderer *Renderer = SDL_CreateRenderer(Window, -1, SDL_RENDERER_PRESENTVSYNC);
+        printf("Refresh rate is %d Hz\n", SDLGetWindowRefreshRate(Window));
+        int GameUpdateHz = 30;
+        real32 TargetSecondsPerFrame = 1.0f / (real32)GameUpdateHz;
         if (Renderer)
         {
             bool Running = true;
@@ -473,7 +499,7 @@ int main(int argc,
             SoundOutput.BytesPerSample = sizeof(int16) * 2;
             SoundOutput.SecondaryBufferSize =
                 SoundOutput.SamplesPerSecond * SoundOutput.BytesPerSample;
-            SoundOutput.LatencySampleCount = SoundOutput.SamplesPerSecond / 30;
+            SoundOutput.LatencySampleCount = SoundOutput.SamplesPerSecond / 15;
             // Open our audio device:
             SDLInitAudio(48000, SoundOutput.SecondaryBufferSize);
             // NOTE: calloc() allocates memory and clears it to zero. It accepts the number of
@@ -483,6 +509,7 @@ int main(int argc,
             SDL_PauseAudio(0);
 
 #if HANDMADE_INTERNAL
+            // TODO: This will fail gently on 32-bit at the moment, but we should probably fix it.
             void *BaseAddress = (void *)Terabytes(2);
 #else
             void *BaseAddress = (void *)(0);
@@ -494,8 +521,12 @@ int main(int argc,
             uint64 TotalStorageSize =
                 GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
 
-            GameMemory.PermanentStorage =
-                mmap(0, TotalStorageSize, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+            GameMemory.PermanentStorage = mmap(BaseAddress,
+                                               TotalStorageSize,
+                                               PROT_READ | PROT_WRITE,
+                                               MAP_ANON | MAP_PRIVATE,
+                                               -1,
+                                               0);
 
             Assert(GameMemory.PermanentStorage);
 
@@ -692,9 +723,34 @@ int main(int argc,
 
                 SDLFillSoundBuffer(&SoundOutput, ByteToLock, BytesToWrite, &SoundBuffer);
 
+                // We
+                if (SDLGetSecondsElapsed(LastCounter, SDL_GetPerformanceCounter()) <
+                    TargetSecondsPerFrame)
+                {
+                    int32 TimeToSleep =
+                        ((TargetSecondsPerFrame -
+                          SDLGetSecondsElapsed(LastCounter, SDL_GetPerformanceCounter())) *
+                         1000) -
+                        1;
+                    if (TimeToSleep > 0)
+                    {
+
+                        SDL_Delay(TimeToSleep);
+                    }
+                    Assert(SDLGetSecondsElapsed(LastCounter, SDL_GetPerformanceCounter()) <
+                           TargetSecondsPerFrame);
+                    while (SDLGetSecondsElapsed(LastCounter, SDL_GetPerformanceCounter()) <
+                           TargetSecondsPerFrame)
+                    {
+                        // Waiting...
+                    }
+                }
+
+                // Get this before SDLUpdateWindow() so that we don't keep missing VBlanks.
+                uint64 EndCounter = SDL_GetPerformanceCounter();
+
                 SDLUpdateWindow(Window, Renderer, &GlobalBackbuffer);
                 uint64 EndCycleCount = _rdtsc();
-                uint64 EndCounter = SDL_GetPerformanceCounter();
                 uint64 CounterElapsed = EndCounter - LastCounter;
                 uint64 CyclesElapsed = EndCycleCount - LastCycleCount;
 
